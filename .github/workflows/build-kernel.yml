@@ -1,53 +1,4 @@
-name: Build KernelSU for Redmi 5A (riva)
-
-on:
-  workflow_dispatch:
-
-jobs:
-  build:
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Checkout Kernel Source
-        uses: actions/checkout@v4
-        with:
-          repository: LineageOS/android_kernel_xiaomi_msm8937
-          ref: lineage-22.2
-          fetch-depth: 1
-
-      - name: Setup Build Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y bc bison build-essential ccache curl flex git gnupg gperf liblz4-tool libncurses-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev tar wget libelf-dev
-
-      - name: Setup Proton Clang Toolchain
-        run: |
-          git clone --depth=1 https://github.com/kdrag0n/proton-clang clang
-
-      - name: Integrate KernelSU (Legacy v0.9.5)
-        run: |
-          curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/v0.9.5/kernel/setup.sh" | bash -s v0.9.5
-          for config in arch/arm64/configs/vendor/msm8937-perf_defconfig arch/arm64/configs/vendor/riva-perf_defconfig arch/arm64/configs/msm8937_defconfig; do
-            if [ -f "$config" ]; then
-              echo "CONFIG_KSU=y" >> $config
-              echo "CONFIG_KPROBES=y" >> $config
-              echo "CONFIG_HAVE_KPROBES=y" >> $config
-              echo "CONFIG_KPROBE_EVENTS=y" >> $config
-              echo "CONFIG_COMPAT_VDSO=n" >> $config
-            fi
-          done
-
-      - name: Compile Kernel
-        run: |
-          export PATH="$(pwd)/clang/bin:$PATH"
-          mkdir out
-          DEFCONFIG="vendor/msm8937-perf_defconfig"
-          [ -f "arch/arm64/configs/$DEFCONFIG" ] || DEFCONFIG="vendor/riva-perf_defconfig"
-          [ -f "arch/arm64/configs/$DEFCONFIG" ] || DEFCONFIG="msm8937_defconfig"
-          
-          make O=out ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- $DEFCONFIG
-          make -j$(nproc --all) O=out ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- KCFLAGS="-w"
-
-      - name: Package Flashable AnyKernel3
+- name: Package Flashable AnyKernel3
         run: |
           git clone https://github.com/osm0sis/AnyKernel3
           cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb 2>/dev/null || cp out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz 2>/dev/null || cp out/arch/arm64/boot/Image AnyKernel3/Image 2>/dev/null
@@ -75,7 +26,10 @@ jobs:
           } # end attributes
 
           # boot shell variables
-          block=auto;
+          block=/dev/block/bootdevice/by-name/boot;
+          [ -e "$block" ] || block=/dev/block/platform/soc/7824900.sdhci/by-name/boot;
+          [ -e "$block" ] || block=/dev/block/platform/soc.0/7824900.sdhci/by-name/boot;
+          [ -e "$block" ] || block=/dev/block/by-name/boot;
           is_slot_device=0;
           ramdisk_compression=auto;
           patch_vbmeta_flag=auto;
@@ -84,18 +38,11 @@ jobs:
           . tools/ak3-core.sh;
 
           # boot install
-          dump_boot;
-
-          write_boot;
+          split_boot;
+          flash_boot;
           ## end boot install
           EOF
 
           cd AnyKernel3
           chmod -R 755 tools/ *.sh
           zip -r9 ../KernelSU-Redmi5A-Flashable.zip ./* -x .git README.md
-
-      - name: Upload Flashable Kernel
-        uses: actions/upload-artifact@v4
-        with:
-          name: KernelSU-Redmi5A-Flashable
-          path: KernelSU-Redmi5A-Flashable.zip
