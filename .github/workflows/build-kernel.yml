@@ -17,7 +17,7 @@ jobs:
       - name: Setup Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc bison build-essential ccache curl flex git gnupg gperf liblz4-tool libncurses-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev tar wget libelf-dev
+          sudo apt-get install -y bc bison build-essential ccache curl flex git gnupg gperf liblz4-tool libncurses-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev tar wget libelf-dev abootimg
 
       - name: Setup Proton Clang Toolchain
         run: |
@@ -47,18 +47,42 @@ jobs:
           make O=out ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- $DEFCONFIG
           make -j$(nproc --all) O=out ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- KCFLAGS="-w"
 
-      - name: Package Flashable AnyKernel3
+      - name: Package AnyKernel3 Flashable ZIP
         run: |
           git clone https://github.com/osm0sis/AnyKernel3
           cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb 2>/dev/null || cp out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz 2>/dev/null || cp out/arch/arm64/boot/Image AnyKernel3/Image 2>/dev/null
+          
+          # Force clean config with accurate hardware node
+          cat << 'EOF' > AnyKernel3/anykernel.sh
+          ### AnyKernel3 Ramdisk Mod Script
+          properties() { '
+          kernel.string=KernelSU by Tech Mind
+          do.devicecheck=0
+          do.modules=0
+          do.systemless=1
+          do.cleanup=1
+          do.cleanuponabort=0
+          '; }
+          boot_attributes() {
+          set_perm_recursive 0 0 755 644 $RAMDISK/*;
+          set_perm_recursive 0 0 750 750 $RAMDISK/init* $RAMDISK/sbin;
+          }
+          block=/dev/block/platform/soc/7824900.sdhci/by-name/boot;
+          [ -e "$block" ] || block=/dev/block/bootdevice/by-name/boot;
+          [ -e "$block" ] || block=auto;
+          is_slot_device=0;
+          ramdisk_compression=auto;
+          patch_vbmeta_flag=auto;
+          . tools/ak3-core.sh;
+          dump_boot;
+          write_boot;
+          EOF
+
           cd AnyKernel3
-          sed -i 's/kernel.string=.*/kernel.string=KernelSU by Tech Mind/g' anykernel.sh
-          sed -i 's/do.devicecheck=1/do.devicecheck=0/g' anykernel.sh
-          sed -i 's|block=.*;|block=/dev/block/platform/soc/7824900.sdhci/by-name/boot;|g' anykernel.sh
           chmod -R 755 tools/ *.sh
           zip -r9 ../KernelSU-Redmi5A-Flashable.zip ./* -x .git README.md
 
-      - name: Upload Flashable Kernel
+      - name: Upload Flashable Package
         uses: actions/upload-artifact@v4
         with:
           name: KernelSU-Redmi5A-Flashable
