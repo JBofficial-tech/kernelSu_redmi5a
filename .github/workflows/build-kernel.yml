@@ -23,9 +23,9 @@ jobs:
         run: |
           git clone --depth=1 https://github.com/kdrag0n/proton-clang clang
 
-      - name: Integrate KernelSU
+      - name: Integrate KernelSU (Legacy v0.9.5)
         run: |
-          curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -
+          curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/v0.9.5/kernel/setup.sh" | bash -s v0.9.5
           DEFCONFIG="arch/arm64/configs/msm8937_defconfig"
           echo "CONFIG_KSU=y" >> $DEFCONFIG
           echo "CONFIG_KPROBES=y" >> $DEFCONFIG
@@ -37,8 +37,8 @@ jobs:
         run: |
           export PATH="$(pwd)/clang/bin:$PATH"
           mkdir out
-          make O=out ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- msm8937_defconfig
-          make -j$(nproc --all) O=out ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+          make O=out ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- KCFLAGS="-w" CFLAGS="-w" msm8937_defconfig
+          make -j$(nproc --all) O=out ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- KCFLAGS="-w" CFLAGS="-w"
 
       - name: Package AnyKernel3
         run: |
