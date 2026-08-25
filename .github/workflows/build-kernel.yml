@@ -17,28 +17,36 @@ jobs:
       - name: Setup Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc bison build-essential ccache curl flex git gnupg gperf liblz4-tool libncurses-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev
+          sudo apt-get install -y bc bison build-essential ccache curl flex git gnupg gperf liblz4-tool libncurses-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev tar wget libelf-dev
 
-      - name: Setup Proton Clang Toolchain
+      - name: Setup Clang Toolchain
         run: |
-          git clone --depth=1 https://github.com/kdrag0n/proton-clang clang
+          mkdir -p clang
+          wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android14-release/clang-r487747c.tar.gz
+          tar -xzf clang-r487747c.tar.gz -C clang
+          rm -f clang-r487747c.tar.gz
 
-      - name: Integrate KernelSU (Legacy v0.9.5)
+      - name: Integrate KernelSU
         run: |
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/v0.9.5/kernel/setup.sh" | bash -s v0.9.5
-          DEFCONFIG="arch/arm64/configs/msm8937_defconfig"
-          echo "CONFIG_KSU=y" >> $DEFCONFIG
-          echo "CONFIG_KPROBES=y" >> $DEFCONFIG
-          echo "CONFIG_HAVE_KPROBES=y" >> $DEFCONFIG
-          echo "CONFIG_KPROBE_EVENTS=y" >> $DEFCONFIG
-          echo "CONFIG_COMPAT_VDSO=n" >> $DEFCONFIG
+          for config in arch/arm64/configs/vendor/msm8937-perf_defconfig arch/arm64/configs/vendor/riva-perf_defconfig arch/arm64/configs/msm8937_defconfig; do
+            if [ -f "$config" ]; then
+              echo "CONFIG_KSU=y" >> $config
+              echo "CONFIG_KPROBES=y" >> $config
+              echo "CONFIG_HAVE_KPROBES=y" >> $config
+              echo "CONFIG_KPROBE_EVENTS=y" >> $config
+            fi
+          done
 
       - name: Compile Kernel
         run: |
           export PATH="$(pwd)/clang/bin:$PATH"
           mkdir out
-          make O=out ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- KCFLAGS="-w" CFLAGS="-w" msm8937_defconfig
-          make -j$(nproc --all) O=out ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- KCFLAGS="-w" CFLAGS="-w"
+          DEFCONFIG="vendor/msm8937-perf_defconfig"
+          [ -f "arch/arm64/configs/$DEFCONFIG" ] || DEFCONFIG="vendor/riva-perf_defconfig"
+          [ -f "arch/arm64/configs/$DEFCONFIG" ] || DEFCONFIG="msm8937_defconfig"
+          make O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 $DEFCONFIG
+          make -j$(nproc --all) O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 KCFLAGS="-w"
 
       - name: Package AnyKernel3
         run: |
